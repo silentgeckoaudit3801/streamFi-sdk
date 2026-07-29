@@ -24,6 +24,7 @@ export class WebSocketRelayer {
   private lockQueue: Array<() => void> = [];
   private connectPromise: Promise<void> | null = null;
   private reconnectAttempts = 0;
+  private reconnectEnabled = true;
   private maxReconnectAttempts: number;
   private reconnectDelayMs: number;
   private pendingMessages: WebSocketMessage[] = [];
@@ -66,6 +67,7 @@ export class WebSocketRelayer {
     if (this.isDestroyed) {
       throw new Error('WebSocketRelayer has been destroyed');
     }
+    this.reconnectEnabled = true;
     if (this.connectPromise) {
       return this.connectPromise;
     }
@@ -125,7 +127,7 @@ export class WebSocketRelayer {
 
         ws.onclose = () => {
           this.ws = null;
-          if (!this.isDestroyed) {
+          if (!this.isDestroyed && this.reconnectEnabled) {
             this.attemptReconnect();
           }
         };
@@ -181,6 +183,7 @@ export class WebSocketRelayer {
   private shouldAttemptReconnect(): boolean {
     return (
       !this.isDestroyed &&
+      this.reconnectEnabled &&
       this.reconnectAttempts < this.maxReconnectAttempts &&
       (!this.ws || this.ws.readyState !== 1)
     );
@@ -266,7 +269,9 @@ export class WebSocketRelayer {
   }
 
   disconnect(): void {
+    this.reconnectEnabled = false;
     this.connectPromise = null;
+    this.reconnectAttempts = 0;
 
     if (this.ws) {
       try {
@@ -280,6 +285,7 @@ export class WebSocketRelayer {
 
   destroy(): void {
     this.isDestroyed = true;
+    this.reconnectEnabled = false;
     this.connectPromise = null;
     this.pendingMessages = [];
     this.reconnectAttempts = this.maxReconnectAttempts;
